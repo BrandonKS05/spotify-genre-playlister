@@ -12,19 +12,17 @@ const genreSeeds: Record<string, string[]> = {
   kpop: ["BTS","BLACKPINK","Stray Kids","NewJeans","SEVENTEEN"]
 };
 
-async function safeRecommendations(params: URLSearchParams, access: string) {
-  // Try call #1 (as-is)
-  try {
-    return await api(`/recommendations?${params.toString()}`, access);
-  } catch (_) {}
+function uniq<T>(arr: T[]) {
+  return [...new Set(arr)];
+}
 
-  // Try call #2 (genre only)
+async function tryRecs(params: URLSearchParams, access: string) {
+  // attempt as-is
+  try { return await api(`/recommendations?${params.toString()}`, access); } catch {}
+  // retry genre-only
   const p2 = new URLSearchParams(params);
   p2.delete("seed_artists");
-  try {
-    return await api(`/recommendations?${p2.toString()}`, access);
-  } catch (_) {}
-
+  try { return await api(`/recommendations?${p2.toString()}`, access); } catch {}
   return null;
 }
 
@@ -36,27 +34,29 @@ export async function POST(req: Request) {
   const g = (genre || "").toLowerCase();
 
   try {
-    // Profile (for id + market)
+    // who/where
     const me = await api("/me", access);
     const market = me?.country || "US";
 
-    // Resolve up to 4 artist IDs (we keep 1 slot for genre → total seeds ≤ 5)
-    const wanted = (genreSeeds[g] || []).slice(0, 5);
+    // resolve up to 4 unique artist IDs (keep 1 slot for genre, total seeds ≤ 5)
+    const wanted = (genreSeeds[g] || []).slice(0, 6);
     const ids: string[] = [];
     for (const w of wanted) {
       const id = await getArtistId(w, access);
       if (id) ids.push(id);
       if (ids.length >= 4) break;
     }
+    const artistSeeds = uniq(ids).slice(0, 4);
 
-    // Build params (always include genre; Spotify requires ≤5 total seeds)
+    // build params — ALWAYS include genre
     const params = new URLSearchParams();
-    params.set("limit", String(Math.min(Math.max(limit ?? 50, 10), 100)));
+    const L = Math.min(Math.max(Number(limit ?? 50), 10), 100);
+    params.set("limit", String(L));
     params.set("market", market);
     if (g) params.set("seed_genres", g);
-    if (ids.length) params.set("seed_artists", ids.join(",")); // max 4 here
+    if (artistSeeds.length) params.set("seed_artists", artistSeeds.join(","));
 
-    // Optional: light per-genre tuning
+    // optional tuning
     if (g === "edm") {
       params.set("target_energy", "0.75");
       params.set("target_danceability", "0.7");
@@ -67,31 +67,34 @@ export async function POST(req: Request) {
       params.set("target_valence", "0.7");
     }
 
-    // Fetch recommendations with graceful fallback
-    let rec = await safeRecommendations(params, access);
+    // recommendations with graceful fallbacks
+    let rec = await tryRecs(params, access);
     let uris: string[] = (rec?.tracks || []).map((t: any) => t.uri);
 
-    // LAST-RESORT FALLBACK: use artists' top tracks if recs still failed/empty
-    if (!uris.length && ids.length) {
+    // last resort: artists' top tracks
+    if (!uris.length && artistSeeds.length) {
       const topUris: string[] = [];
-      for (const id of ids) {
+      for (const id of artistSeeds) {
         try {
           const top = await api(`/artists/${id}/top-tracks?market=${market}`, access);
           for (const t of top?.tracks || []) {
-            if (topUris.length >= (Number(params.get("limit")) || 50)) break;
+            if (topUris.length >= L) break;
             topUris.push(t.uri);
           }
         } catch {}
-        if (topUris.length >= (Number(params.get("limit")) || 50)) break;
+        if (topUris.length >= L) break;
       }
       uris = topUris;
     }
 
     if (!uris.length) {
-      return NextResponse.json({ error: "no_tracks", details: "Could not build recommendations for this seed/market." }, { status: 404 });
+      return NextResponse.json(
+        { error: "no_tracks", details: "No recommendations for this seed/market." },
+        { status: 404 }
+      );
     }
 
-    // Create playlist
+    // create playlist
     const created = await api(`/users/${me.id}/playlists`, access, {
       method: "POST",
       body: JSON.stringify({
@@ -101,12 +104,11 @@ export async function POST(req: Request) {
       })
     });
 
-    // Add tracks (chunks of 100)
+    // add tracks (chunks of 100)
     for (let i = 0; i < uris.length; i += 100) {
-      const chunk = uris.slice(i, i + 100);
       await api(`/playlists/${created.id}/tracks`, access, {
         method: "POST",
-        body: JSON.stringify({ uris: chunk })
+        body: JSON.stringify({ uris: uris.slice(i, i + 100) })
       });
     }
 
