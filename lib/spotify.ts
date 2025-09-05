@@ -1,14 +1,17 @@
+// lib/spotify.ts
 import { env } from "./env";
 
 const TOKEN_ENDPOINT = "https://accounts.spotify.com/api/token";
 const AUTHORIZE_ENDPOINT = "https://accounts.spotify.com/authorize";
 const API_BASE = "https://api.spotify.com/v1";
 
+// ✅ Added "user-top-read" so we can call /me/top/tracks
 export const scopes = [
   "playlist-modify-public",
   "playlist-modify-private",
   "user-read-email",
-  "user-read-private"
+  "user-read-private",
+  "user-top-read"
 ].join(" ");
 
 export function authUrl(state: string) {
@@ -18,6 +21,7 @@ export function authUrl(state: string) {
   u.searchParams.set("redirect_uri", env.SPOTIFY_REDIRECT_URI);
   u.searchParams.set("scope", scopes);
   u.searchParams.set("state", state);
+  u.searchParams.set("show_dialog", "true"); // ✅ force re-consent after scope change
   return u.toString();
 }
 
