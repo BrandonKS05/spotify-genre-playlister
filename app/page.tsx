@@ -15,7 +15,7 @@ const GENRES = [
   { key: "pop", label: "Pop" },
   { key: "rock", label: "Rock" },
   { key: "rnb", label: "R&B" },
-  { key: "kpop", label: "K‑Pop" },
+  { key: "kpop", label: "K-Pop" },
 ];
 
 export default function Home() {
@@ -33,7 +33,7 @@ export default function Home() {
     })();
   }, []);
 
-  const create = async (genre: string) => {
+  const createGenre = async (genre: string) => {
     setStatus(`Creating your ${genre.toUpperCase()} playlist…`);
     setError("");
     try {
@@ -47,7 +47,40 @@ export default function Home() {
       setStatus(`✅ Added ${data.added} tracks and created: ${data.playlist.name}`);
     } catch (e:any) {
       setStatus("");
-      setError(e?.message || "Something went wrong");
+      setError(String(e?.message || "Something went wrong"));
+    }
+  };
+
+  const createTopTracks = async () => {
+    setStatus(`Building your Top Tracks playlist…`);
+    setError("");
+    try {
+      const res = await fetch("/api/top-tracks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ range: "short_term", limit: 50 })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed");
+      setStatus(`✅ Added ${data.added} tracks and created: ${data.playlist.name}`);
+    } catch (e:any) {
+      setStatus("");
+      setError(String(e?.message || "Something went wrong"));
+    }
+  };
+
+  const createTrending = async () => {
+    setStatus(`Building Trending Now (Global Top 50)…`);
+    setError("");
+    try {
+      const res = await fetch("/api/trending", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed");
+      const topOne = data?.topTrack?.name ? ` Top track: ${data.topTrack.name} — ${data.topTrack?.artists?.[0]?.name ?? ""}` : "";
+      setStatus(`✅ Added ${data.added} tracks and created: ${data.playlist.name}.${topOne}`);
+    } catch (e:any) {
+      setStatus("");
+      setError(String(e?.message || "Something went wrong"));
     }
   };
 
@@ -69,8 +102,8 @@ export default function Home() {
       <div className="card">
         {!loggedIn ? (
           <>
-            <h1>One‑click genre playlists</h1>
-            <p className="muted">Connect Spotify, pick a genre (e.g., EDM), and we’ll build a fresh playlist on your account using curated seed artists and Spotify’s recommendations. Market is matched to your profile to avoid 403s.</p>
+            <h1>One-click Spotify playlists</h1>
+            <p className="muted">Connect Spotify, pick a genre or use the shortcuts (Top Tracks / Trending), and we’ll build playlists on your account.</p>
             <hr/>
             <a className="btn" href="/api/login">Connect Spotify</a>
           </>
@@ -87,14 +120,23 @@ export default function Home() {
               <a className="btn" href="/api/login">Switch account</a>
             </div>
             <hr/>
-            <p>Select a genre to create a playlist on your Spotify:</p>
+
+            <p><b>Select a genre:</b></p>
             <div className="grid">
               {GENRES.map(g => (
-                <button key={g.key} className="genre" onClick={() => create(g.key)}>
+                <button key={g.key} className="genre" onClick={() => createGenre(g.key)}>
                   {g.label}
                 </button>
               ))}
             </div>
+
+            <hr/>
+            <p><b>Shortcuts:</b></p>
+            <div className="grid">
+              <button className="genre" onClick={createTopTracks}>My Most Played (last 4 weeks)</button>
+              <button className="genre" onClick={createTrending}>Trending Now (Global Top 50)</button>
+            </div>
+
             <hr/>
             {status && <div className="success">{status}</div>}
             {error && <div className="error">{error}</div>}
