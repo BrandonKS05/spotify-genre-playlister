@@ -33,14 +33,14 @@ export default function Home() {
     })();
   }, []);
 
-  const createGenre = async (genre: string) => {
-    setStatus(`Creating your ${genre.toUpperCase()} playlist…`);
+  const run = async (path: string, body: any, labelForStatus: string) => {
+    setStatus(labelForStatus);
     setError("");
     try {
-      const res = await fetch("/api/create-playlist", {
+      const res = await fetch(path, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ genre })
+        body: JSON.stringify(body)
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed");
@@ -51,38 +51,17 @@ export default function Home() {
     }
   };
 
-  const createTopTracks = async () => {
-    setStatus(`Building your Top Tracks playlist…`);
-    setError("");
-    try {
-      const res = await fetch("/api/top-tracks", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ range: "short_term", limit: 50 })
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed");
-      setStatus(`✅ Added ${data.added} tracks and created: ${data.playlist.name}`);
-    } catch (e:any) {
-      setStatus("");
-      setError(String(e?.message || "Something went wrong"));
-    }
-  };
+  const createPersonalized = (genre: string) =>
+    run("/api/create-playlist", { genre }, `Creating your ${genre.toUpperCase()} playlist (personalized)…`);
 
-  const createTrending = async () => {
-    setStatus(`Building Trending Now (Global Top 50)…`);
-    setError("");
-    try {
-      const res = await fetch("/api/trending", { method: "POST" });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed");
-      const topOne = data?.topTrack?.name ? ` Top track: ${data.topTrack.name} — ${data.topTrack?.artists?.[0]?.name ?? ""}` : "";
-      setStatus(`✅ Added ${data.added} tracks and created: ${data.playlist.name}.${topOne}`);
-    } catch (e:any) {
-      setStatus("");
-      setError(String(e?.message || "Something went wrong"));
-    }
-  };
+  const createRandomGenre = (genre: string) =>
+    run("/api/genre-random", { genre }, `Creating random ${genre.toUpperCase()} mix from catalog…`);
+
+  const createTopTracks = () =>
+    run("/api/top-tracks", { range: "short_term", limit: 50 }, "Building your Top Tracks playlist…");
+
+  const createTrending = () =>
+    run("/api/trending", {}, "Building Trending Now (Global Top 50)…");
 
   return (
     <div className="container">
@@ -103,7 +82,7 @@ export default function Home() {
         {!loggedIn ? (
           <>
             <h1>One-click Spotify playlists</h1>
-            <p className="muted">Connect Spotify, pick a genre or use the shortcuts (Top Tracks / Trending), and we’ll build playlists on your account.</p>
+            <p className="muted">Connect Spotify, then build playlists by genre (personalized) or as random catalog mixes. Also try shortcuts for your Top Tracks and Global Trending.</p>
             <hr/>
             <a className="btn" href="/api/login">Connect Spotify</a>
           </>
@@ -119,13 +98,23 @@ export default function Home() {
               </div>
               <a className="btn" href="/api/login">Switch account</a>
             </div>
-            <hr/>
 
-            <p><b>Select a genre:</b></p>
+            <hr/>
+            <p><b>Personalized by genre (uses your taste + catalog):</b></p>
             <div className="grid">
               {GENRES.map(g => (
-                <button key={g.key} className="genre" onClick={() => createGenre(g.key)}>
+                <button key={g.key} className="genre" onClick={() => createPersonalized(g.key)}>
                   {g.label}
+                </button>
+              ))}
+            </div>
+
+            <hr/>
+            <p><b>Random from catalog (ignores your library):</b></p>
+            <div className="grid">
+              {GENRES.map(g => (
+                <button key={g.key} className="genre" onClick={() => createRandomGenre(g.key)}>
+                  Random {g.label}
                 </button>
               ))}
             </div>
