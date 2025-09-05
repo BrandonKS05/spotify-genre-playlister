@@ -52,10 +52,7 @@ export default function Home() {
   };
 
   const createPersonalized = (genre: string) =>
-    run("/api/create-playlist", { genre }, `Creating your ${genre.toUpperCase()} playlist (personalized)…`);
-
-  const createRandomGenre = (genre: string) =>
-    run("/api/genre-random", { genre }, `Creating random ${genre.toUpperCase()} mix from catalog…`);
+    run("/api/create-playlist", { genre }, `Creating your ${genre.toUpperCase()} playlist…`);
 
   const createTopTracks = () =>
     run("/api/top-tracks", { range: "short_term", limit: 50 }, "Building your Top Tracks playlist…");
@@ -82,7 +79,7 @@ export default function Home() {
         {!loggedIn ? (
           <>
             <h1>One-click Spotify playlists</h1>
-            <p className="muted">Connect Spotify, then build playlists by genre (personalized) or as random catalog mixes. Also try shortcuts for your Top Tracks and Global Trending.</p>
+            <p className="muted">Connect Spotify, pick a genre, or use the shortcuts for your Top Tracks / Global Trending.</p>
             <hr/>
             <a className="btn" href="/api/login">Connect Spotify</a>
           </>
@@ -100,21 +97,11 @@ export default function Home() {
             </div>
 
             <hr/>
-            <p><b>Personalized by genre (uses your taste + catalog):</b></p>
+            <p><b>Personalized by genre:</b></p>
             <div className="grid">
               {GENRES.map(g => (
                 <button key={g.key} className="genre" onClick={() => createPersonalized(g.key)}>
                   {g.label}
-                </button>
-              ))}
-            </div>
-
-            <hr/>
-            <p><b>Random from catalog (ignores your library):</b></p>
-            <div className="grid">
-              {GENRES.map(g => (
-                <button key={g.key} className="genre" onClick={() => createRandomGenre(g.key)}>
-                  Random {g.label}
                 </button>
               ))}
             </div>
