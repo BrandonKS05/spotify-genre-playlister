@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { api, getArtistId } from "../../../lib/spotify";
 import { getTokens } from "../../../lib/session";
 
-// Curated seed artists per genre for better recommendations
+// Curated seed artists per genre
 const genreSeeds: Record<string, string[]> = {
   edm: ["ILLENIUM","Dabin","Knock2","Seven Lions","SLANDER"],
   hiphop: ["Kendrick Lamar","J. Cole","Travis Scott","Drake","21 Savage"],
@@ -12,6 +12,22 @@ const genreSeeds: Record<string, string[]> = {
   kpop: ["BTS","BLACKPINK","Stray Kids","NewJeans","SEVENTEEN"]
 };
 
+async function safeRecommendations(params: URLSearchParams, access: string) {
+  // Try call #1 (as-is)
+  try {
+    return await api(`/recommendations?${params.toString()}`, access);
+  } catch (_) {}
+
+  // Try call #2 (genre only)
+  const p2 = new URLSearchParams(params);
+  p2.delete("seed_artists");
+  try {
+    return await api(`/recommendations?${p2.toString()}`, access);
+  } catch (_) {}
+
+  return null;
+}
+
 export async function POST(req: Request) {
   const { access } = getTokens();
   if (!access) return NextResponse.json({ error: "not_logged_in" }, { status: 401 });
@@ -20,37 +36,27 @@ export async function POST(req: Request) {
   const g = (genre || "").toLowerCase();
 
   try {
-    // Profile (for user id + market)
+    // Profile (for id + market)
     const me = await api("/me", access);
     const market = me?.country || "US";
 
-    // Resolve up to 5 seed artist IDs
+    // Resolve up to 4 artist IDs (we keep 1 slot for genre → total seeds ≤ 5)
     const wanted = (genreSeeds[g] || []).slice(0, 5);
     const ids: string[] = [];
     for (const w of wanted) {
       const id = await getArtistId(w, access);
       if (id) ids.push(id);
-      if (ids.length >= 5) break; // hard cap
+      if (ids.length >= 4) break;
     }
 
-    // Build recommendations — total seeds across all types must be <= 5
+    // Build params (always include genre; Spotify requires ≤5 total seeds)
     const params = new URLSearchParams();
     params.set("limit", String(Math.min(Math.max(limit ?? 50, 10), 100)));
     params.set("market", market);
+    if (g) params.set("seed_genres", g);
+    if (ids.length) params.set("seed_artists", ids.join(",")); // max 4 here
 
-    if (ids.length > 0) {
-      // If we already have 5 artist seeds, don't add a genre.
-      params.set("seed_artists", ids.slice(0, 5).join(","));
-      if (ids.length < 5 && g) {
-        // keep total seeds <=5; add the genre only if we have room
-        params.set("seed_genres", g);
-      }
-    } else {
-      // No artist IDs resolved? Use just the genre seed.
-      params.set("seed_genres", g || "pop");
-    }
-
-    // Light per-genre tuning
+    // Optional: light per-genre tuning
     if (g === "edm") {
       params.set("target_energy", "0.75");
       params.set("target_danceability", "0.7");
@@ -61,8 +67,29 @@ export async function POST(req: Request) {
       params.set("target_valence", "0.7");
     }
 
-    const rec = await api(`/recommendations?${params.toString()}`, access);
-    const uris = (rec.tracks || []).map((t: any) => t.uri);
+    // Fetch recommendations with graceful fallback
+    let rec = await safeRecommendations(params, access);
+    let uris: string[] = (rec?.tracks || []).map((t: any) => t.uri);
+
+    // LAST-RESORT FALLBACK: use artists' top tracks if recs still failed/empty
+    if (!uris.length && ids.length) {
+      const topUris: string[] = [];
+      for (const id of ids) {
+        try {
+          const top = await api(`/artists/${id}/top-tracks?market=${market}`, access);
+          for (const t of top?.tracks || []) {
+            if (topUris.length >= (Number(params.get("limit")) || 50)) break;
+            topUris.push(t.uri);
+          }
+        } catch {}
+        if (topUris.length >= (Number(params.get("limit")) || 50)) break;
+      }
+      uris = topUris;
+    }
+
+    if (!uris.length) {
+      return NextResponse.json({ error: "no_tracks", details: "Could not build recommendations for this seed/market." }, { status: 404 });
+    }
 
     // Create playlist
     const created = await api(`/users/${me.id}/playlists`, access, {
