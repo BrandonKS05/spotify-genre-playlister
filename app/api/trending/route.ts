@@ -2,36 +2,37 @@ import { NextResponse } from "next/server";
 import { api } from "../../../lib/spotify";
 import { getTokens } from "../../../lib/session";
 
-// POST body (optional):
-// { range?: "short_term" | "medium_term" | "long_term", limit?: number, name?: string }
+// force dynamic so it always runs server-side
+export const dynamic = "force-dynamic";
+
+// Spotify editorial playlist ID: Top 50 – Global
+const TOP_50_GLOBAL = "37i9dQZEVXbMDoHDwVN2tF";
+
 export async function POST(req: Request) {
   const { access } = getTokens();
   if (!access) return NextResponse.json({ error: "not_logged_in" }, { status: 401 });
 
   const body = await req.json().catch(() => ({} as any));
-  const range = (body?.range ?? "short_term") as "short_term" | "medium_term" | "long_term"; // ~4w, 6m, all-time
   const L = Math.min(Math.max(Number(body?.limit ?? 50), 1), 50);
 
   try {
     const me = await api("/me", access);
     const market = me?.country || "US";
 
-    const top = await api(`/me/top/tracks?time_range=${range}&limit=${L}`, access);
-    const uris: string[] = (top?.items || []).map((t: any) => t.uri);
+    // Read the editorial playlist and copy its tracks
+    const tracks = await api(`/playlists/${TOP_50_GLOBAL}/tracks?market=${market}&limit=${L}`, access);
+    const items = tracks?.items || [];
+    const uris: string[] = items.map((it: any) => it?.track?.uri).filter(Boolean);
 
     if (!uris.length) {
-      return NextResponse.json({ error: "no_tracks", details: "No top tracks found for this range." }, { status: 404 });
+      return NextResponse.json({ error: "no_tracks", details: "Could not read Top 50 – Global playlist." }, { status: 404 });
     }
-
-    const label =
-      range === "short_term" ? "Last 4 Weeks" :
-      range === "medium_term" ? "Last 6 Months" : "All Time";
 
     const created = await api(`/users/${me.id}/playlists`, access, {
       method: "POST",
       body: JSON.stringify({
-        name: body?.name || `Your Top Tracks • ${label}`,
-        description: `Auto playlist of your most played tracks — ${label} (${market})`,
+        name: body?.name || "Trending Now — Global Top 50",
+        description: `Global Top 50 snapshot for ${me.display_name} — ${market}`,
         public: false
       })
     });
@@ -43,7 +44,8 @@ export async function POST(req: Request) {
       });
     }
 
-    return NextResponse.json({ ok: true, playlist: created, added: uris.length });
+    const topTrack = items[0]?.track ?? null;
+    return NextResponse.json({ ok: true, playlist: created, added: uris.length, topTrack });
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || "failed" }, { status: 500 });
   }
