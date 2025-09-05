@@ -30,14 +30,25 @@ export async function POST(req: Request) {
     for (const w of wanted) {
       const id = await getArtistId(w, access);
       if (id) ids.push(id);
+      if (ids.length >= 5) break; // hard cap
     }
 
-    // Build recommendations
+    // Build recommendations — total seeds across all types must be <= 5
     const params = new URLSearchParams();
     params.set("limit", String(Math.min(Math.max(limit ?? 50, 10), 100)));
     params.set("market", market);
-    if (ids.length) params.set("seed_artists", ids.join(","));
-    params.set("seed_genres", g);
+
+    if (ids.length > 0) {
+      // If we already have 5 artist seeds, don't add a genre.
+      params.set("seed_artists", ids.slice(0, 5).join(","));
+      if (ids.length < 5 && g) {
+        // keep total seeds <=5; add the genre only if we have room
+        params.set("seed_genres", g);
+      }
+    } else {
+      // No artist IDs resolved? Use just the genre seed.
+      params.set("seed_genres", g || "pop");
+    }
 
     // Light per-genre tuning
     if (g === "edm") {
@@ -57,8 +68,8 @@ export async function POST(req: Request) {
     const created = await api(`/users/${me.id}/playlists`, access, {
       method: "POST",
       body: JSON.stringify({
-        name: name || `${g.toUpperCase()} • Auto Mix`,
-        description: `Auto-generated ${g.toUpperCase()} playlist for ${me.display_name} — ${market}`,
+        name: name || `${(g || "mix").toUpperCase()} • Auto Mix`,
+        description: `Auto-generated ${(g || "mix").toUpperCase()} playlist for ${me.display_name} — ${market}`,
         public: false
       })
     });
