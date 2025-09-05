@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { api, getArtistId } from "@/lib/spotify";
-import { getTokens } from "@/lib/session";
+import { api, getArtistId } from "../../../lib/spotify";
+import { getTokens } from "../../../lib/session";
 
 // Curated seed artists per genre for better recommendations
 const genreSeeds: Record<string, string[]> = {
@@ -18,10 +18,9 @@ export async function POST(req: Request) {
 
   const { genre, name, limit } = await req.json();
   const g = (genre || "").toLowerCase();
-  const playlistName = name || `${g.upper?.() ?? g} Essentials`;
 
   try {
-    // Get user profile (for id + market)
+    // Profile (for user id + market)
     const me = await api("/me", access);
     const market = me?.country || "US";
 
@@ -33,14 +32,14 @@ export async function POST(req: Request) {
       if (id) ids.push(id);
     }
 
-    // Build recommendations call
+    // Build recommendations
     const params = new URLSearchParams();
     params.set("limit", String(Math.min(Math.max(limit ?? 50, 10), 100)));
     params.set("market", market);
     if (ids.length) params.set("seed_artists", ids.join(","));
     params.set("seed_genres", g);
 
-    // Light tailoring per-genre
+    // Light per-genre tuning
     if (g === "edm") {
       params.set("target_energy", "0.75");
       params.set("target_danceability", "0.7");
@@ -64,7 +63,7 @@ export async function POST(req: Request) {
       })
     });
 
-    // Add tracks in chunks of 100
+    // Add tracks (chunks of 100)
     for (let i = 0; i < uris.length; i += 100) {
       const chunk = uris.slice(i, i + 100);
       await api(`/playlists/${created.id}/tracks`, access, {

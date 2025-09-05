@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import crypto from "crypto";
-import { authUrl } from "@/lib/spotify";
+import { authUrl } from "../../../lib/spotify";
 
 export async function GET() {
   const state = crypto.randomBytes(16).toString("hex");

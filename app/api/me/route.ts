@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { api } from "@/lib/spotify";
-import { getTokens } from "@/lib/session";
+import { api } from "../../../lib/spotify";
+import { getTokens } from "../../../lib/session";
 
 export async function GET() {
   const { access } = getTokens();

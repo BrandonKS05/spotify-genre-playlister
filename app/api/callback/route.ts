@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { exchangeCodeForToken } from "@/lib/spotify";
-import { setTokens } from "@/lib/session";
+import { exchangeCodeForToken } from "../../../lib/spotify";
+import { setTokens } from "../../../lib/session";
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
